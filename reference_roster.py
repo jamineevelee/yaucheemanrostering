@@ -97,10 +97,8 @@ if file:
 
     all_pairings = group_pairings(df)
 
-    # only show FO logic if FO selected
-    if category == "FO":
-        if not is_rq_rp:
-            all_pairings = [p for p in all_pairings if not p['is_rq_rp']]
+    if category == "FO" and not is_rq_rp:
+        all_pairings = [p for p in all_pairings if not p.get("is_rq_rp", False)]
 
     st.success(f"✅ Grouped {len(all_pairings)} pairings ({'RQ/RP included' if is_rq_rp or category != 'FO' else 'FO only'})")
 
@@ -109,7 +107,7 @@ if file:
         "Start": p["start_date"],
         "End": p["end_date"],
         "Days": p["length_days"],
-        "RQ/RP": p["is_rq_rp"],
+        "RQ/RP": p.get("is_rq_rp", False),
         "Routes": " → ".join([s["route"] for s in p["segments"] if s["route"]])
     } for p in all_pairings]
     st.dataframe(pd.DataFrame(preview))
