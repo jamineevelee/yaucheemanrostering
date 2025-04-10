@@ -33,24 +33,28 @@ def extract_pairings_from_pdf(uploaded_file):
     st.subheader("🧪 Raw PDF Text Preview (First 3000 chars)")
     st.code(full_text[:3000])
 
-    trip_blocks = re.findall(r"Trip ID:.*?(?=(Trip ID:|$))", full_text, re.DOTALL)
+    # Match blocks starting with 'Trip Id:'
+    trip_blocks = re.findall(r"Trip Id:.*?(?=(\nTrip Id:|\Z))", full_text, re.DOTALL)
     pairings = []
 
     for block in trip_blocks:
-        trip_id_match = re.search(r"Trip ID:\s*(\d+[A-Z]?(?:\(RQ\)|\(RP\))?)", block)
-        route_match = re.search(r"Routing:\s*([A-Z\-\s]+)", block)
-        sign_on_match = re.search(r"Sign On:\s*(\d{4})", block)
+        trip_id_match = re.search(r"Trip Id:\s*(\S+)", block)
+        flight_match = re.search(r"\n(\d{3,4})\n", block)
+        sign_on_match = re.search(r"\n(\d{2}:\d{2})\n", block)
+        port_match = re.search(r"\n([A-Z]{3})\n", block)
 
-        if trip_id_match and route_match:
+        if trip_id_match:
             trip_id = trip_id_match.group(1)
-            route = route_match.group(1).strip()
+            flight = flight_match.group(1) if flight_match else ""
             sign_on = sign_on_match.group(1) if sign_on_match else ""
+            port = port_match.group(1) if port_match else ""
             is_rq_rp_trip = "(RQ)" in trip_id or "(RP)" in trip_id
 
             pairings.append({
                 "trip_id": trip_id,
-                "route": route,
+                "first_flight": flight,
                 "sign_on": sign_on,
+                "port": port,
                 "is_rq_rp": is_rq_rp_trip
             })
 
