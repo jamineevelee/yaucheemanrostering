@@ -33,30 +33,20 @@ def extract_pairings_from_pdf(uploaded_file):
     st.subheader("🧪 Raw PDF Text Preview (First 3000 chars)")
     st.code(full_text[:3000])
 
-    # Match blocks starting with 'Trip Id:'
-    trip_blocks = re.findall(r"Trip Id:.*?(?=(\nTrip Id:|\Z))", full_text, re.DOTALL)
+    # New pattern: Trip Id, Flight No, Sign On, Port in sequence
+    pattern = r"Trip Id:\s*(\S+)\n(\d{3,4})\n(\d{2}:\d{2})\n([A-Z]{3})"
+    matches = re.findall(pattern, full_text)
+
     pairings = []
-
-    for block in trip_blocks:
-        trip_id_match = re.search(r"Trip Id:\s*(\S+)", block)
-        flight_match = re.search(r"\n(\d{3,4})\n", block)
-        sign_on_match = re.search(r"\n(\d{2}:\d{2})\n", block)
-        port_match = re.search(r"\n([A-Z]{3})\n", block)
-
-        if trip_id_match:
-            trip_id = trip_id_match.group(1)
-            flight = flight_match.group(1) if flight_match else ""
-            sign_on = sign_on_match.group(1) if sign_on_match else ""
-            port = port_match.group(1) if port_match else ""
-            is_rq_rp_trip = "(RQ)" in trip_id or "(RP)" in trip_id
-
-            pairings.append({
-                "trip_id": trip_id,
-                "first_flight": flight,
-                "sign_on": sign_on,
-                "port": port,
-                "is_rq_rp": is_rq_rp_trip
-            })
+    for trip_id, flight, sign_on, port in matches:
+        is_rq_rp_trip = "(RQ)" in trip_id or "(RP)" in trip_id
+        pairings.append({
+            "trip_id": trip_id,
+            "first_flight": flight,
+            "sign_on": sign_on,
+            "port": port,
+            "is_rq_rp": is_rq_rp_trip
+        })
 
     return pairings
 
