@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import re
 from datetime import datetime
-from PyPDF2 import PdfReader
 
 st.set_page_config(page_title="Reference Roster Generator", layout="wide")
 st.title("✈️ Reference Roster Generator")
@@ -15,8 +14,8 @@ is_rq_rp = False
 if category == "FO":
     is_rq_rp = st.sidebar.checkbox("I am RQ/RP Qualified", value=False)
 
-st.sidebar.header("📥 Upload Pairing PDF")
-file = st.sidebar.file_uploader("Upload the PDF file (Pairing Book)", type=["pdf"])
+st.sidebar.header("📥 Upload Pairing File")
+file = st.sidebar.file_uploader("Upload the Excel file (Pairing Book)", type=["xlsx"])
 
 # --- Bid Preferences ---
 st.sidebar.header("🎯 Bid Preferences")
@@ -25,39 +24,55 @@ avoid_lax = st.sidebar.checkbox("Avoid LAX")
 want_gdo_sundays = st.sidebar.checkbox("Want GDO on Sundays")
 latest_sign_on = st.sidebar.time_input("Earliest Acceptable Sign-On", value=datetime.strptime("08:00", "%H:%M"))
 
-# --- PDF Parsing Function ---
-def extract_pairings_from_pdf(uploaded_file):
-    reader = PdfReader(uploaded_file)
-    full_text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
-
-    st.subheader("🧪 Raw PDF Text Preview (First 3000 chars)")
-    st.code(full_text[:3000])
-
-    # New pattern: Trip Id, Flight No, Sign On, Port in sequence
-    pattern = r"Trip Id:\s*(\S+)\n(\d{3,4})\n(\d{2}:\d{2})\n([A-Z]{3})"
-    matches = re.findall(pattern, full_text)
-
+# --- Helper Functions ---
+def extract_pairings(df):
     pairings = []
-    for trip_id, flight, sign_on, port in matches:
-        is_rq_rp_trip = "(RQ)" in trip_id or "(RP)" in trip_id
-        pairings.append({
-            "trip_id": trip_id,
-            "first_flight": flight,
-            "sign_on": sign_on,
-            "port": port,
-            "is_rq_rp": is_rq_rp_trip
-        })
+    try:
+        # Row 3 = date row (based on 'Homebase' row)
+        dates = df.iloc[3].tolist()[2:]
+        row = 5  # actual pairing data starts from here
+        while row + 2 < len(df):
+            trip_ids = df.iloc[row].tolist()[2:]
+            routes = df.iloc[row + 1].tolist()[2:]
+            times = df.iloc[row + 2].tolist()[2:]
 
+            for i in range(len(trip_ids)):
+                trip_id = trip_ids[i]
+                if pd.isna(trip_id):
+                    continue
+                trip_str = str(trip_id)
+                route = routes[i] if i < len(routes) else ""
+                time = times[i] if i < len(times) else ""
+                is_rq_rp_trip = bool(re.search(r"\((RQ|RP)\)", trip_str))
+                try:
+                    date = pd.to_datetime(dates[i]).date()
+                except:
+                    continue
+                pairings.append({
+                    "date": date,
+                    "trip_id": trip_str,
+                    "route": route,
+                    "time": time,
+                    "is_rq_rp": is_rq_rp_trip
+                })
+            row += 4  # go to next pilot block
+    except Exception as e:
+        st.error(f"❌ Error extracting pairings: {e}")
     return pairings
 
 # --- Main App ---
 if file:
-    pairing_list = extract_pairings_from_pdf(file)
+    df = pd.read_excel(file, sheet_name=0)
+
+    st.subheader("🧪 Raw Data Preview (Top 40 Rows)")
+    st.dataframe(df.head(40))
+
+    pairing_list = extract_pairings(df)
 
     if category == "FO" and not is_rq_rp:
         pairing_list = [p for p in pairing_list if not p['is_rq_rp']]
 
-    st.success(f"✅ Loaded {len(pairing_list)} pairings from PDF ({'RQ/RP included' if is_rq_rp or category != 'FO' else 'FO only'})")
+    st.success(f"✅ Loaded {len(pairing_list)} pairings ({'RQ/RP included' if is_rq_rp or category != 'FO' else 'FO only'})")
 
     # Show filtered pairings
     st.subheader("📋 Filtered Pairings")
@@ -66,4 +81,4 @@ if file:
 
     st.info("🛠️ Roster simulation engine coming next...")
 else:
-    st.warning("⬅️ Please upload a pairing PDF file to begin.")
+    st.warning("⬅️ Please upload a pairing Excel file to begin.")
