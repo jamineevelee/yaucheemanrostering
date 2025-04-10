@@ -29,11 +29,12 @@ def group_pairings(df):
     pairings = []
     try:
         dates = df.iloc[3].tolist()[2:]
-        current_pairing = None
         row = 5
         while row + 2 < len(df):
+            current_pairing = None
             routes = df.iloc[row + 1].tolist()[2:]
             times = df.iloc[row + 2].tolist()[2:]
+            numbers = df.iloc[row].tolist()[2:]
             i = 0
             while i < len(dates):
                 try:
@@ -43,25 +44,41 @@ def group_pairings(df):
                     continue
                 route = routes[i]
                 time = times[i]
-                has_flight = pd.notna(route) or pd.notna(time)
+                number = numbers[i]
+                has_flight = pd.notna(route) or pd.notna(time) or pd.notna(number)
                 if has_flight:
                     if current_pairing is None:
-                        current_pairing = {"start_date": date, "segments": []}
-                    current_pairing["segments"].append({"date": date, "route": route or "", "time": time or ""})
+                        current_pairing = {"start_date": date, "segments": [], "source_row": row}
+                    current_pairing["segments"].append({
+                        "date": date,
+                        "route": route or "",
+                        "time": time or "",
+                        "number": str(number) if pd.notna(number) else ""
+                    })
                 else:
                     if current_pairing:
                         current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
-                        current_pairing["is_rq_rp"] = any(re.search(r"\((RQ|RP)\)", s["time"]) or re.search(r"\(RP\)", s["route"]) for s in current_pairing["segments"] if s["time"] or s["route"])
+                        current_pairing["is_rq_rp"] = any(
+                            re.search(r"\((RQ|RP)\)", s["time"])
+                            or re.search(r"\((RQ|RP)\)", s["route"])
+                            or re.search(r"\((RQ|RP)\)", s["number"])
+                            for s in current_pairing["segments"] if s["time"] or s["route"] or s["number"]
+                        )
                         current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
                         pairings.append(current_pairing)
                         current_pairing = None
                 i += 1
+            if current_pairing:
+                current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
+                current_pairing["is_rq_rp"] = any(
+                    re.search(r"\((RQ|RP)\)", s["time"])
+                    or re.search(r"\((RQ|RP)\)", s["route"])
+                    or re.search(r"\((RQ|RP)\)", s["number"])
+                    for s in current_pairing["segments"] if s["time"] or s["route"] or s["number"]
+                )
+                current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
+                pairings.append(current_pairing)
             row += 4
-        if current_pairing:
-            current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
-            current_pairing["is_rq_rp"] = any(re.search(r"\((RQ|RP)\)", s["time"]) or re.search(r"\(RP\)", s["route"]) for s in current_pairing["segments"] if s["time"] or s["route"])
-            current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
-            pairings.append(current_pairing)
     except Exception as e:
         st.error(f"❌ Error grouping pairings: {e}")
     return pairings
@@ -105,7 +122,8 @@ if file:
         "End": p["end_date"],
         "Days": p["length_days"],
         "Score": p["score"],
-        "Routes": " → ".join([s["route"] for s in p["segments"] if s["route"]])
+        "Routes": " → ".join([s["route"] for s in p["segments"] if s["route"]]),
+        "From Row": p["source_row"]
     } for p in final_roster]
     st.dataframe(pd.DataFrame(preview))
 
