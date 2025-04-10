@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import re
@@ -17,6 +16,13 @@ if category == "FO":
 
 st.sidebar.header("📥 Upload Pairing File")
 file = st.sidebar.file_uploader("Upload the Excel file (Pairing Book)", type=["xlsx"])
+
+# --- Bid Preferences ---
+st.sidebar.header("🎯 Bid Preferences")
+want_jfk = st.sidebar.checkbox("Prefer JFK Layover")
+avoid_lax = st.sidebar.checkbox("Avoid LAX")
+want_gdo_sundays = st.sidebar.checkbox("Want GDO on Sundays")
+latest_sign_on = st.sidebar.time_input("Earliest Acceptable Sign-On", value=datetime.strptime("08:00", "%H:%M"))
 
 # --- Helper Functions ---
 def extract_pairings(df):
@@ -65,8 +71,11 @@ if file:
 
     st.success(f"✅ Loaded {len(pairing_list)} pairings ({'RQ/RP included' if is_rq_rp or category != 'FO' else 'FO only'})")
 
-    st.dataframe(pd.DataFrame(pairing_list))
+    # Show filtered pairings
+    st.subheader("📋 Filtered Pairings")
+    df_pairings = pd.DataFrame(pairing_list)
+    st.dataframe(df_pairings)
 
-    st.info("💡 Bid entry and roster simulation coming next...")
+    st.info("🛠️ Roster simulation engine coming next...")
 else:
     st.warning("⬅️ Please upload a pairing Excel file to begin.")
