@@ -154,12 +154,12 @@ if file:
             "Flight Numbers": " → ".join(s["number"] for s in p["segments"] if s["number"]),
             "Duty Start": p["duty_start"],
             "Duty End": p["duty_end"],
-            "Layover Duration": (
+            "Layover Duration": (lambda: (
                 str(
                     datetime.combine(p["segments"][1]["date"], datetime.strptime(p["segments"][1]["time"].split("-")[0], "%H%M").time())
                     - datetime.combine(p["segments"][0]["date"], datetime.strptime(p["segments"][0]["time"].split("-")[-1], "%H%M").time())
-                ) if len(p["segments"]) > 1 and "-" in p["segments"][0]["time"] and "-" in p["segments"][1]["time"] else "N/A"
-            ),
+                )
+            ) if len(p["segments"]) > 1 and "-" in p["segments"][0]["time"] and "-" in p["segments"][1]["time"] else "N/A")(),
             "Turnaround": p["start_date"] == p["end_date"],
             "Integrated": any("HKG" in s["route"] for s in p["segments"][1:-1])
         }
