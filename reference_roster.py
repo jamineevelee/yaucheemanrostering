@@ -27,6 +27,20 @@ avoid_na = st.sidebar.checkbox("Avoid North America")
 latest_sign_on = st.sidebar.time_input("Earliest Acceptable Sign-On", value=datetime.strptime("08:00", "%H:%M"))
 
 # --- Helper Functions ---
+def is_integrated(segments):
+    for i in range(1, len(segments) - 1):
+        if "HKG" in segments[i]["route"]:
+            try:
+                arr_time = datetime.strptime(segments[i]["time"].split("-")[-1], "%H%M").time()
+                dep_time = datetime.strptime(segments[i + 1]["time"].split("-")[0], "%H%M").time()
+                arr_dt = datetime.combine(segments[i]["date"], arr_time)
+                dep_dt = datetime.combine(segments[i + 1]["date"], dep_time)
+                if timedelta(0) < dep_dt - arr_dt < timedelta(hours=4):
+                    return True
+            except:
+                continue
+    return False
+
 def group_pairings(df):
     pairings = []
     try:
@@ -40,7 +54,6 @@ def group_pairings(df):
             segments = []
             sub_row = row + 1
             while sub_row < len(df) and pd.isna(df.iloc[sub_row, 1]):
-                segments.append(sub_row)
                 sub_row += 1
 
             numbers = df.iloc[row].tolist()[2:]
@@ -64,9 +77,7 @@ def group_pairings(df):
                         current_pairing = {
                             "start_date": date,
                             "segments": [],
-                            "source_row": row,
-                            "duty_start": None,
-                            "duty_end": None
+                            "source_row": row
                         }
                     current_pairing["segments"].append({
                         "date": date,
@@ -77,12 +88,7 @@ def group_pairings(df):
                 else:
                     if current_pairing:
                         current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
-                        current_pairing["is_rq_rp"] = any(
-                            re.search(r"\(RQ|RP\)", s["number"]) or
-                            re.search(r"\(RQ|RP\)", s["route"]) or
-                            re.search(r"\(RQ|RP\)", s["time"])
-                            for s in current_pairing["segments"]
-                        )
+                        current_pairing["is_rq_rp"] = any(re.search(r"\(RQ|RP\)", s["number"] + s["route"] + s["time"]) for s in current_pairing["segments"])
                         current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
 
                         try:
@@ -97,19 +103,14 @@ def group_pairings(df):
                             current_pairing["duty_end"] = "N/A"
 
                         current_pairing["turnaround"] = current_pairing["start_date"] == current_pairing["end_date"]
+                        current_pairing["integrated"] = is_integrated(current_pairing["segments"])
                         pairings.append(current_pairing)
                         current_pairing = None
                 i += 1
             if current_pairing:
                 current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
-                current_pairing["is_rq_rp"] = any(
-                    re.search(r"\(RQ|RP\)", s["number"]) or
-                    re.search(r"\(RQ|RP\)", s["route"]) or
-                    re.search(r"\(RQ|RP\)", s["time"])
-                    for s in current_pairing["segments"]
-                )
+                current_pairing["is_rq_rp"] = any(re.search(r"\(RQ|RP\)", s["number"] + s["route"] + s["time"]) for s in current_pairing["segments"])
                 current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
-
                 try:
                     dep_time = datetime.strptime(current_pairing["segments"][0]["time"].split("-")[0], "%H%M")
                     current_pairing["duty_start"] = datetime.combine(current_pairing["segments"][0]["date"], dep_time.time()) - timedelta(hours=1, minutes=10)
@@ -122,11 +123,27 @@ def group_pairings(df):
                     current_pairing["duty_end"] = "N/A"
 
                 current_pairing["turnaround"] = current_pairing["start_date"] == current_pairing["end_date"]
+                current_pairing["integrated"] = is_integrated(current_pairing["segments"])
                 pairings.append(current_pairing)
             row = sub_row
     except Exception as e:
         st.error(f"❌ Error grouping pairings: {e}")
     return pairings
+
+def get_layover(p):
+    try:
+        if len(p["segments"]) > 1 and "-" in p["segments"][0]["time"] and "-" in p["segments"][1]["time"]:
+            arr_str = p["segments"][0]["time"].split("-")[-1]
+            dep_str = p["segments"][1]["time"].split("-")[0]
+            arr_time = datetime.strptime(arr_str, "%H%M").time()
+            dep_time = datetime.strptime(dep_str, "%H%M").time()
+            arr_dt = datetime.combine(p["segments"][0]["date"], arr_time)
+            dep_dt = datetime.combine(p["segments"][1]["date"], dep_time)
+            return round((dep_dt - arr_dt).total_seconds() / 3600, 1)
+        else:
+            return "N/A"
+    except:
+        return "N/A"
 
 # --- File Handling ---
 if file:
@@ -137,29 +154,6 @@ if file:
     st.success(f"✅ Grouped {len(filtered_pairings)} pairings ({'RQ/RP included' if is_rq_rp else 'FO only'})")
     st.subheader("📋 Grouped Pairings Preview")
 
-    def get_layover(p):
-        try:
-            if len(p["segments"]) > 1 and "-" in p["segments"][0]["time"] and "-" in p["segments"][1]["time"]:
-                arr_str = p["segments"][0]["time"].split("-")[-1]
-                dep_str = p["segments"][1]["time"].split("-")[0]
-                arr_time = datetime.strptime(arr_str, "%H%M").time()
-                dep_time = datetime.strptime(dep_str, "%H%M").time()
-                arr_dt = datetime.combine(p["segments"][0]["date"], arr_time)
-                dep_dt = datetime.combine(p["segments"][1]["date"], dep_time)
-                return round((dep_dt - arr_dt).total_seconds() / 3600, 1)
-            else:
-                return "N/A"
-        except:
-            return "N/A"
-
-    def get_region_label(routes):
-        for r in routes:
-            if any(x in r for x in ["LAX", "JFK", "ORD", "SFO", "YVR", "LHR", "CDG", "FRA", "AMS", "DOH", "DXB"]):
-                return "Long Haul"
-            elif any(x in r for x in ["NRT", "HND", "KIX", "FUK", "ICN", "GMP", "BKK", "SIN", "DEL", "BOM"]):
-                return "Regional"
-        return "Other"
-
     st.dataframe(pd.DataFrame([
         {
             "Duty Start": p["duty_start"],
@@ -168,12 +162,10 @@ if file:
             "RQ/RP": p["is_rq_rp"],
             "Routes": " → ".join(s["route"] for s in p["segments"] if s["route"]),
             "Flight Numbers": " → ".join(s["number"] for s in p["segments"] if s["number"]),
-            "Layover (hrs)": get_layover(p),
+            "Layover H": get_layover(p),
             "Turnaround": p["turnaround"],
-            "Integrated": any("HKG" in s["route"] for s in p["segments"][1:-1]),
-            "Region": get_region_label([s["route"] for s in p["segments"]])
-        }
-        for p in filtered_pairings
+            "Integrated": p["integrated"]
+        } for p in filtered_pairings
     ]))
 
     st.info("🔧 Roster simulation engine coming next...")
