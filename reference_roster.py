@@ -37,102 +37,97 @@ def group_pairings(df):
                 row += 1
                 continue
 
-            current_pairing = None
-            segments = []
-            sub_row = row + 1
-            while sub_row < len(df) and pd.isna(df.iloc[sub_row, 1]):
-                segments.append(sub_row)
-                sub_row += 1
-
             numbers = df.iloc[row].tolist()[2:]
             routes = df.iloc[row+1].tolist()[2:] if row+1 < len(df) else ["" for _ in dates]
             times = df.iloc[row+2].tolist()[2:] if row+2 < len(df) else ["" for _ in dates]
 
             i = 0
-            current_pairing = None
             while i < len(dates):
                 try:
                     date = pd.to_datetime(dates[i]).date()
                 except:
                     i += 1
                     continue
+
                 number = str(numbers[i]) if pd.notna(numbers[i]) else ""
                 route = str(routes[i]) if pd.notna(routes[i]) else ""
                 time = str(times[i]) if pd.notna(times[i]) else ""
+
                 has_flight = bool(number or route or time)
+
                 if has_flight:
-                    if current_pairing is None:
-                        current_pairing = {
-                            "start_date": date,
-                            "segments": [],
-                            "source_row": row,
-                            "duty_start": None,
-                            "duty_end": None
-                        }
-                    current_pairing["segments"].append({
-                        "date": date,
-                        "number": number,
-                        "route": route,
-                        "time": time
-                    })
-                else:
-                    if current_pairing:
-                        current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
-                        current_pairing["is_rq_rp"] = any(
-                            re.search(r"\(RQ|RP\)", s["number"]) or
-                            re.search(r"\(RQ|RP\)", s["route"]) or
-                            re.search(r"\(RQ|RP\)", s["time"])
-                            for s in current_pairing["segments"]
-                        )
-                        current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
+                    pairing = {
+                        "start_date": date,
+                        "segments": [{
+                            "date": date,
+                            "number": number,
+                            "route": route,
+                            "time": time
+                        }],
+                        "source_row": row,
+                        "duty_start": None,
+                        "duty_end": None
+                    }
 
-                        # Calculate duty start and end
-                        first_seg = current_pairing["segments"][0]
-                        last_seg = current_pairing["segments"][-1]
+                    # Check next day(s) if it's same pattern or separate
+                    j = i + 1
+                    while j < len(dates):
                         try:
-                            dep_time = datetime.strptime(first_seg["time"].split("-")[0], "%H%M")
-                            current_pairing["duty_start"] = datetime.combine(first_seg["date"], dep_time.time()) - timedelta(hours=1, minutes=10)
+                            next_date = pd.to_datetime(dates[j]).date()
                         except:
-                            current_pairing["duty_start"] = "N/A"
+                            break
+
+                        next_number = str(numbers[j]) if pd.notna(numbers[j]) else ""
+                        next_route = str(routes[j]) if pd.notna(routes[j]) else ""
+                        next_time = str(times[j]) if pd.notna(times[j]) else ""
+                        if not (next_number or next_route or next_time):
+                            break
+
                         try:
-                            arr_time = datetime.strptime(last_seg["time"].split("-")[-1], "%H%M")
-                            current_pairing["duty_end"] = datetime.combine(last_seg["date"], arr_time.time())
+                            last_arr_time = datetime.strptime(pairing["segments"][-1]["time"].split("-")[-1], "%H%M").time()
+                            last_arr_dt = datetime.combine(pairing["segments"][-1]["date"], last_arr_time)
+                            next_dep_time = datetime.strptime(next_time.split("-")[0], "%H%M").time()
+                            next_dep_dt = datetime.combine(next_date, next_dep_time)
+                            rest_period = (next_dep_dt - last_arr_dt).total_seconds() / 3600.0
+                            if rest_period >= 9:
+                                break  # Treat as new pairing
                         except:
-                            current_pairing["duty_end"] = "N/A"
+                            break
 
-                        current_pairing["turnaround"] = current_pairing["start_date"] == current_pairing["end_date"]
+                        pairing["segments"].append({
+                            "date": next_date,
+                            "number": next_number,
+                            "route": next_route,
+                            "time": next_time
+                        })
+                        i = j
+                        j += 1
 
-                        pairings.append(current_pairing)
-                        current_pairing = None
+                    pairing["end_date"] = pairing["segments"][-1]["date"]
+                    pairing["is_rq_rp"] = any(
+                        re.search(r"\(RQ|RP\)", s["number"]) or
+                        re.search(r"\(RQ|RP\)", s["route"]) or
+                        re.search(r"\(RQ|RP\)", s["time"])
+                        for s in pairing["segments"]
+                    )
+                    pairing["length_days"] = (pairing["end_date"] - pairing["start_date"]).days + 1
+
+                    try:
+                        dep_time = datetime.strptime(pairing["segments"][0]["time"].split("-")[0], "%H%M")
+                        pairing["duty_start"] = datetime.combine(pairing["segments"][0]["date"], dep_time.time()) - timedelta(hours=1, minutes=10)
+                    except:
+                        pairing["duty_start"] = "N/A"
+                    try:
+                        arr_time = datetime.strptime(pairing["segments"][-1]["time"].split("-")[-1], "%H%M")
+                        pairing["duty_end"] = datetime.combine(pairing["segments"][-1]["date"], arr_time.time())
+                    except:
+                        pairing["duty_end"] = "N/A"
+
+                    pairing["turnaround"] = pairing["start_date"] == pairing["end_date"]
+                    pairings.append(pairing)
+
                 i += 1
-            if current_pairing:
-                current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
-                current_pairing["is_rq_rp"] = any(
-                    re.search(r"\(RQ|RP\)", s["number"]) or
-                    re.search(r"\(RQ|RP\)", s["route"]) or
-                    re.search(r"\(RQ|RP\)", s["time"])
-                    for s in current_pairing["segments"]
-                )
-                current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
-
-                # Calculate duty start and end
-                first_seg = current_pairing["segments"][0]
-                last_seg = current_pairing["segments"][-1]
-                try:
-                    dep_time = datetime.strptime(first_seg["time"].split("-")[0], "%H%M")
-                    current_pairing["duty_start"] = datetime.combine(first_seg["date"], dep_time.time()) - timedelta(hours=1, minutes=10)
-                except:
-                    current_pairing["duty_start"] = "N/A"
-                try:
-                    arr_time = datetime.strptime(last_seg["time"].split("-")[-1], "%H%M")
-                    current_pairing["duty_end"] = datetime.combine(last_seg["date"], arr_time.time())
-                except:
-                    current_pairing["duty_end"] = "N/A"
-
-                current_pairing["turnaround"] = current_pairing["start_date"] == current_pairing["end_date"]
-
-                pairings.append(current_pairing)
-            row = sub_row
+            row += 4
     except Exception as e:
         st.error(f"❌ Error grouping pairings: {e}")
     return pairings
