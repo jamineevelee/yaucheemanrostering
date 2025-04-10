@@ -144,6 +144,22 @@ if file:
 
     st.success(f"✅ Grouped {len(filtered_pairings)} pairings ({'RQ/RP included' if is_rq_rp else 'FO only'})")
     st.subheader("📋 Grouped Pairings Preview")
+
+    def get_layover(p):
+        try:
+            if len(p["segments"]) > 1 and "-" in p["segments"][0]["time"] and "-" in p["segments"][1]["time"]:
+                arr_str = p["segments"][0]["time"].split("-")[-1]
+                dep_str = p["segments"][1]["time"].split("-")[0]
+                arr_time = datetime.strptime(arr_str, "%H%M").time()
+                dep_time = datetime.strptime(dep_str, "%H%M").time()
+                arr_dt = datetime.combine(p["segments"][0]["date"], arr_time)
+                dep_dt = datetime.combine(p["segments"][1]["date"], dep_time)
+                return str(dep_dt - arr_dt)
+            else:
+                return "N/A"
+        except:
+            return "N/A"
+
     st.dataframe(pd.DataFrame([
         {
             "Start": p["start_date"],
@@ -154,12 +170,7 @@ if file:
             "Flight Numbers": " → ".join(s["number"] for s in p["segments"] if s["number"]),
             "Duty Start": p["duty_start"],
             "Duty End": p["duty_end"],
-            "Layover Duration": (lambda: (
-                str(
-                    datetime.combine(p["segments"][1]["date"], datetime.strptime(p["segments"][1]["time"].split("-")[0], "%H%M").time())
-                    - datetime.combine(p["segments"][0]["date"], datetime.strptime(p["segments"][0]["time"].split("-")[-1], "%H%M").time())
-                )
-            ) if len(p["segments"]) > 1 and "-" in p["segments"][0]["time"] and "-" in p["segments"][1]["time"] else "N/A")(),
+            "Layover Duration": get_layover(p),
             "Turnaround": p["start_date"] == p["end_date"],
             "Integrated": any("HKG" in s["route"] for s in p["segments"][1:-1])
         }
