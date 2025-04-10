@@ -37,6 +37,12 @@ def group_pairings(df):
                 row += 1
                 continue
 
+            segments = []
+            sub_row = row + 1
+            while sub_row < len(df) and pd.isna(df.iloc[sub_row, 1]):
+                segments.append(sub_row)
+                sub_row += 1
+
             numbers = df.iloc[row].tolist()[2:]
             routes = df.iloc[row+1].tolist()[2:] if row+1 < len(df) else ["" for _ in dates]
             times = df.iloc[row+2].tolist()[2:] if row+2 < len(df) else ["" for _ in dates]
@@ -49,16 +55,17 @@ def group_pairings(df):
                 except:
                     i += 1
                     continue
+
                 number = str(numbers[i]) if pd.notna(numbers[i]) else ""
                 route = str(routes[i]) if pd.notna(routes[i]) else ""
                 time = str(times[i]) if pd.notna(times[i]) else ""
+
                 has_flight = bool(number or route or time)
                 if has_flight:
                     if current_pairing is None:
                         current_pairing = {
-                            "start_date": date,
                             "segments": [],
-                            "source_row": row
+                            "source_row": row,
                         }
                     current_pairing["segments"].append({
                         "date": date,
@@ -68,14 +75,12 @@ def group_pairings(df):
                     })
                 else:
                     if current_pairing:
-                        current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
                         pairings.append(current_pairing)
                         current_pairing = None
                 i += 1
             if current_pairing:
-                current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
                 pairings.append(current_pairing)
-            row += 3
+            row = sub_row
     except Exception as e:
         st.error(f"❌ Error grouping pairings: {e}")
     return pairings
@@ -83,15 +88,50 @@ def group_pairings(df):
 # --- File Handling ---
 if file:
     df = pd.read_excel(file, header=None)
-    pairings = group_pairings(df)
-    st.success(f"✅ Grouped {len(pairings)} pairings (FO only)")
+    all_pairings = group_pairings(df)
+    filtered_pairings = [p for p in all_pairings if is_rq_rp or not any("(RQ" in s["number"] or "(RP" in s["number"] for s in p["segments"])]
 
+    st.success(f"✅ Grouped {len(filtered_pairings)} pairings ({'RQ/RP included' if is_rq_rp else 'FO only'})")
     st.subheader("📋 Grouped Pairings Preview")
-    st.dataframe(pd.DataFrame([
-        {
-            "Start": p["start_date"],
-            "End": p["end_date"],
-            "Days": (p["end_date"] - p["start_date"]).days + 1,
-            "Routes": " → ".join(s["route"] for s in p["segments"] if s["route"])
-        } for p in pairings
-    ]))
+
+    def get_layover(p):
+        try:
+            if len(p["segments"]) > 1 and "-" in p["segments"][0]["time"] and "-" in p["segments"][1]["time"]:
+                arr_str = p["segments"][0]["time"].split("-")[-1]
+                dep_str = p["segments"][1]["time"].split("-")[0]
+                arr_time = datetime.strptime(arr_str, "%H%M").time()
+                dep_time = datetime.strptime(dep_str, "%H%M").time()
+                arr_dt = datetime.combine(p["segments"][0]["date"], arr_time)
+                dep_dt = datetime.combine(p["segments"][1]["date"], dep_time)
+                return round((dep_dt - arr_dt).total_seconds() / 3600, 1)
+            else:
+                return "N/A"
+        except:
+            return "N/A"
+
+    result = []
+    for p in filtered_pairings:
+        segs = p["segments"]
+        try:
+            dep_time = datetime.strptime(segs[0]["time"].split("-")[0], "%H%M")
+            duty_start = datetime.combine(segs[0]["date"], dep_time.time()) - timedelta(hours=1, minutes=10)
+        except:
+            duty_start = "N/A"
+
+        try:
+            arr_time = datetime.strptime(segs[-1]["time"].split("-")[-1], "%H%M")
+            duty_end = datetime.combine(segs[-1]["date"], arr_time.time())
+        except:
+            duty_end = "N/A"
+
+        result.append({
+            "Duty Start": duty_start,
+            "Duty End": duty_end,
+            "Total Days": (segs[-1]["date"] - segs[0]["date"]).days + 1 if segs else "N/A",
+            "RQ/RP": any("(RQ" in s["number"] or "(RP" in s["number"] for s in segs),
+            "Routes": " → ".join(s["route"] for s in segs if s["route"]),
+            "Flight Numbers": " → ".join(s["number"] for s in segs if s["number"]),
+            "Layover (hrs)": get_layover(p),
+        })
+
+    st.dataframe(pd.DataFrame(result))
