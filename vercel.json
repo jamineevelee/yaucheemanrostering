@@ -1,1 +1,5 @@
 
+{
+  "builds": [{ "src": "reference_roster.py", "use": "@vercel/python" }],
+  "routes": [{ "src": "/(.*)", "dest": "reference_roster.py" }]
+}
