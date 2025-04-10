@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Reference Roster Generator", layout="wide")
 st.title("✈️ Reference Roster Generator")
@@ -25,39 +25,61 @@ want_gdo_sundays = st.sidebar.checkbox("Want GDO on Sundays")
 latest_sign_on = st.sidebar.time_input("Earliest Acceptable Sign-On", value=datetime.strptime("08:00", "%H:%M"))
 
 # --- Helper Functions ---
-def extract_pairings(df):
+def group_pairings(df):
     pairings = []
     try:
-        # Row 3 = date row (based on 'Homebase' row)
-        dates = df.iloc[3].tolist()[2:]
-        row = 5  # actual pairing data starts from here
+        dates = df.iloc[3].tolist()[2:]  # Use row 3 for dates
+        current_pairing = None
+
+        row = 5  # data starts from row 5
         while row + 2 < len(df):
-            trip_ids = df.iloc[row].tolist()[2:]
             routes = df.iloc[row + 1].tolist()[2:]
             times = df.iloc[row + 2].tolist()[2:]
 
-            for i in range(len(trip_ids)):
-                trip_id = trip_ids[i]
-                if pd.isna(trip_id):
-                    continue
-                trip_str = str(trip_id)
-                route = routes[i] if i < len(routes) else ""
-                time = times[i] if i < len(times) else ""
-                is_rq_rp_trip = bool(re.search(r"\((RQ|RP)\)", trip_str))
+            i = 0
+            while i < len(dates):
                 try:
                     date = pd.to_datetime(dates[i]).date()
                 except:
+                    i += 1
                     continue
-                pairings.append({
-                    "date": date,
-                    "trip_id": trip_str,
-                    "route": route,
-                    "time": time,
-                    "is_rq_rp": is_rq_rp_trip
-                })
-            row += 4  # go to next pilot block
+
+                route = routes[i]
+                time = times[i]
+                has_flight = pd.notna(route) or pd.notna(time)
+
+                if has_flight:
+                    if current_pairing is None:
+                        current_pairing = {
+                            "start_date": date,
+                            "segments": []
+                        }
+
+                    current_pairing["segments"].append({
+                        "date": date,
+                        "route": route if pd.notna(route) else "",
+                        "time": time if pd.notna(time) else ""
+                    })
+                else:
+                    if current_pairing:
+                        current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
+                        current_pairing["is_rq_rp"] = any(re.search(r"\((RQ|RP)\)", s["time"]) for s in current_pairing["segments"] if s["time"])
+                        current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
+                        pairings.append(current_pairing)
+                        current_pairing = None
+                i += 1
+
+            row += 4
+
+        if current_pairing:
+            current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
+            current_pairing["is_rq_rp"] = any(re.search(r"\((RQ|RP)\)", s["time"]) for s in current_pairing["segments"] if s["time"])
+            current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
+            pairings.append(current_pairing)
+
     except Exception as e:
-        st.error(f"❌ Error extracting pairings: {e}")
+        st.error(f"❌ Error grouping pairings: {e}")
+
     return pairings
 
 # --- Main App ---
@@ -67,18 +89,23 @@ if file:
     st.subheader("🧪 Raw Data Preview (Top 40 Rows)")
     st.dataframe(df.head(40))
 
-    pairing_list = extract_pairings(df)
+    all_pairings = group_pairings(df)
 
     if category == "FO" and not is_rq_rp:
-        pairing_list = [p for p in pairing_list if not p['is_rq_rp']]
+        all_pairings = [p for p in all_pairings if not p['is_rq_rp']]
 
-    st.success(f"✅ Loaded {len(pairing_list)} pairings ({'RQ/RP included' if is_rq_rp or category != 'FO' else 'FO only'})")
+    st.success(f"✅ Grouped {len(all_pairings)} pairings ({'RQ/RP included' if is_rq_rp or category != 'FO' else 'FO only'})")
 
-    # Show filtered pairings
-    st.subheader("📋 Filtered Pairings")
-    df_pairings = pd.DataFrame(pairing_list)
-    st.dataframe(df_pairings)
+    st.subheader("📋 Grouped Pairings Preview")
+    preview = [{
+        "Start": p["start_date"],
+        "End": p["end_date"],
+        "Days": p["length_days"],
+        "RQ/RP": p["is_rq_rp"],
+        "Routes": " → ".join([s["route"] for s in p["segments"] if s["route"]])
+    } for p in all_pairings]
+    st.dataframe(pd.DataFrame(preview))
 
-    st.info("🛠️ Roster simulation engine coming next...")
+    st.info("✅ Pairing grouping ready — roster simulation coming next...")
 else:
     st.warning("⬅️ Please upload a pairing Excel file to begin.")
