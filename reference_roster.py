@@ -100,6 +100,8 @@ def group_pairings(df):
                         except:
                             current_pairing["duty_end"] = "N/A"
 
+                        current_pairing["turnaround"] = current_pairing["start_date"] == current_pairing["end_date"]
+
                         pairings.append(current_pairing)
                         current_pairing = None
                 i += 1
@@ -126,6 +128,8 @@ def group_pairings(df):
                     current_pairing["duty_end"] = datetime.combine(last_seg["date"], arr_time.time())
                 except:
                     current_pairing["duty_end"] = "N/A"
+
+                current_pairing["turnaround"] = current_pairing["start_date"] == current_pairing["end_date"]
 
                 pairings.append(current_pairing)
             row = sub_row
@@ -162,16 +166,16 @@ if file:
 
     st.dataframe(pd.DataFrame([
         {
-            "Start": p["start_date"],
-            "End": p["end_date"],
-            "Days": p["length_days"],
+            "Duty Start Date": p["start_date"],
+            "Duty End Date": p["end_date"],
+            "Total Pattern Days": p["length_days"],
             "RQ/RP": p["is_rq_rp"],
             "Routes": " → ".join(s["route"] for s in p["segments"] if s["route"]),
             "Flight Numbers": " → ".join(s["number"] for s in p["segments"] if s["number"]),
             "Duty Start": p["duty_start"],
             "Duty End": p["duty_end"],
             "Layover Duration": get_layover(p),
-            "Turnaround": p["start_date"] == p["end_date"],
+            "Turnaround": p["turnaround"],
             "Integrated": any("HKG" in s["route"] for s in p["segments"][1:-1])
         }
         for p in filtered_pairings
