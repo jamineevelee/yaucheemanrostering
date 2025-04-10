@@ -22,6 +22,8 @@ st.sidebar.header("🎯 Bid Preferences")
 want_jfk = st.sidebar.checkbox("Prefer JFK Layover")
 avoid_lax = st.sidebar.checkbox("Avoid LAX")
 want_gdo_sundays = st.sidebar.checkbox("Want GDO on Sundays")
+prefer_lhr_40h = st.sidebar.checkbox("Prefer LHR with >40h Layover")
+avoid_na = st.sidebar.checkbox("Avoid North America")
 latest_sign_on = st.sidebar.time_input("Earliest Acceptable Sign-On", value=datetime.strptime("08:00", "%H:%M"))
 
 # --- Helper Functions ---
@@ -90,12 +92,16 @@ def simulate_reference_roster(pairings):
     for pairing in sorted_pairings:
         if last_end is None or pairing["start_date"] > last_end:
             score = 0
+            route_summary = " ".join([s["route"].upper() for s in pairing["segments"]])
+            if want_jfk and "JFK" in route_summary:
+                score += 100
+            if avoid_lax and "LAX" in route_summary:
+                score -= 100
+            if avoid_na and any(code in route_summary for code in ["LAX", "JFK", "ORD", "YVR", "YYZ", "SFO"]):
+                score -= 100
+            if prefer_lhr_40h and "LHR" in route_summary and pairing["length_days"] >= 3:
+                score += 80
             for seg in pairing["segments"]:
-                route = seg["route"].upper()
-                if want_jfk and "JFK" in route:
-                    score += 100
-                if avoid_lax and "LAX" in route:
-                    score -= 100
                 if want_gdo_sundays and seg["date"].weekday() == 6:
                     score -= 50
                 if seg["time"] and seg["time"][:5] < latest_sign_on.strftime("%H:%M"):
