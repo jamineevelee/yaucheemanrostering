@@ -97,8 +97,10 @@ if file:
 
     all_pairings = group_pairings(df)
 
-    if category == "FO" and not is_rq_rp:
-        all_pairings = [p for p in all_pairings if not p['is_rq_rp']]
+    # only show FO logic if FO selected
+    if category == "FO":
+        if not is_rq_rp:
+            all_pairings = [p for p in all_pairings if not p['is_rq_rp']]
 
     st.success(f"✅ Grouped {len(all_pairings)} pairings ({'RQ/RP included' if is_rq_rp or category != 'FO' else 'FO only'})")
 
