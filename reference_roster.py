@@ -63,7 +63,10 @@ def group_pairings(df):
                 else:
                     if current_pairing:
                         current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
-                        current_pairing["is_rq_rp"] = any(re.search(r"\((RQ|RP)\)", s["time"]) for s in current_pairing["segments"] if s["time"])
+                        current_pairing["is_rq_rp"] = any(
+                            re.search(r"\((RQ|RP)\)", s["time"]) or "MEL" in s["route"]
+                            for s in current_pairing["segments"] if s["time"] or s["route"]
+                        )
                         current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
                         pairings.append(current_pairing)
                         current_pairing = None
@@ -73,7 +76,10 @@ def group_pairings(df):
 
         if current_pairing:
             current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
-            current_pairing["is_rq_rp"] = any(re.search(r"\((RQ|RP)\)", s["time"]) for s in current_pairing["segments"] if s["time"])
+            current_pairing["is_rq_rp"] = any(
+                re.search(r"\((RQ|RP)\)", s["time"]) or "MEL" in s["route"]
+                for s in current_pairing["segments"] if s["time"] or s["route"]
+            )
             current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
             pairings.append(current_pairing)
 
