@@ -75,6 +75,10 @@ def extract_pairings(df):
 # --- Main App ---
 if file:
     df = pd.read_excel(file, sheet_name=0)
+
+    st.subheader("🧪 Raw Data Preview (Top 20 Rows)")
+    st.dataframe(df.head(20))
+
     pairing_list = extract_pairings(df)
 
     if category == "FO" and not is_rq_rp:
