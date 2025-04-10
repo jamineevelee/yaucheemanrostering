@@ -45,8 +45,8 @@ def group_pairings(df):
                 sub_row += 1
 
             numbers = df.iloc[row].tolist()[2:]
-            routes = df.iloc[row+1].tolist()[2:] if row+1 < len(df) else [""] * len(dates)
-            times = df.iloc[row+2].tolist()[2:] if row+2 < len(df) else [""] * len(dates)
+            routes = df.iloc[row+1].tolist()[2:] if row+1 < len(df) else ["" for _ in dates]
+            times = df.iloc[row+2].tolist()[2:] if row+2 < len(df) else ["" for _ in dates]
 
             i = 0
             current_pairing = None
@@ -62,7 +62,13 @@ def group_pairings(df):
                 has_flight = bool(number or route or time)
                 if has_flight:
                     if current_pairing is None:
-                        current_pairing = {"start_date": date, "segments": [], "source_row": row}
+                        current_pairing = {
+                            "start_date": date,
+                            "segments": [],
+                            "source_row": row,
+                            "duty_start": None,
+                            "duty_end": None
+                        }
                     current_pairing["segments"].append({
                         "date": date,
                         "number": number,
@@ -79,6 +85,21 @@ def group_pairings(df):
                             for s in current_pairing["segments"]
                         )
                         current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
+
+                        # Calculate duty start and end
+                        first_seg = current_pairing["segments"][0]
+                        last_seg = current_pairing["segments"][-1]
+                        try:
+                            dep_time = datetime.strptime(first_seg["time"].split("-")[0], "%H%M")
+                            current_pairing["duty_start"] = datetime.combine(first_seg["date"], dep_time.time()) - timedelta(hours=1, minutes=10)
+                        except:
+                            current_pairing["duty_start"] = "N/A"
+                        try:
+                            arr_time = datetime.strptime(last_seg["time"].split("-")[-1], "%H%M")
+                            current_pairing["duty_end"] = datetime.combine(last_seg["date"], arr_time.time())
+                        except:
+                            current_pairing["duty_end"] = "N/A"
+
                         pairings.append(current_pairing)
                         current_pairing = None
                 i += 1
@@ -91,6 +112,21 @@ def group_pairings(df):
                     for s in current_pairing["segments"]
                 )
                 current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
+
+                # Calculate duty start and end
+                first_seg = current_pairing["segments"][0]
+                last_seg = current_pairing["segments"][-1]
+                try:
+                    dep_time = datetime.strptime(first_seg["time"].split("-")[0], "%H%M")
+                    current_pairing["duty_start"] = datetime.combine(first_seg["date"], dep_time.time()) - timedelta(hours=1, minutes=10)
+                except:
+                    current_pairing["duty_start"] = "N/A"
+                try:
+                    arr_time = datetime.strptime(last_seg["time"].split("-")[-1], "%H%M")
+                    current_pairing["duty_end"] = datetime.combine(last_seg["date"], arr_time.time())
+                except:
+                    current_pairing["duty_end"] = "N/A"
+
                 pairings.append(current_pairing)
             row = sub_row
     except Exception as e:
@@ -114,7 +150,18 @@ if file:
             "End": p["end_date"],
             "Days": p["length_days"],
             "RQ/RP": p["is_rq_rp"],
-            "Routes": " → ".join(s["route"] for s in p["segments"] if s["route"])
+            "Routes": " → ".join(s["route"] for s in p["segments"] if s["route"]),
+            "Flight Numbers": " → ".join(s["number"] for s in p["segments"] if s["number"]),
+            "Duty Start": p["duty_start"],
+            "Duty End": p["duty_end"],
+            "Layover Duration": (
+                str(
+                    datetime.combine(p["segments"][1]["date"], datetime.strptime(p["segments"][1]["time"].split("-")[0], "%H%M").time())
+                    - datetime.combine(p["segments"][0]["date"], datetime.strptime(p["segments"][0]["time"].split("-")[-1], "%H%M").time())
+                ) if len(p["segments"]) > 1 and "-" in p["segments"][0]["time"] and "-" in p["segments"][1]["time"] else "N/A"
+            ),
+            "Turnaround": p["start_date"] == p["end_date"],
+            "Integrated": any("HKG" in s["route"] for s in p["segments"][1:-1])
         }
         for p in filtered_pairings
     ]))
