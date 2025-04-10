@@ -36,17 +36,25 @@ def extract_pairings(df):
         return []
 
     dates = df.iloc[date_row].tolist()[2:]
-    for idx in range(date_row + 1, len(df), 4):
-        name = df.iloc[idx, 0]
-        if pd.isna(name):
+
+    row = date_row + 1
+    while row < len(df):
+        name_cell = df.iloc[row, 0]
+        if pd.isna(name_cell):
+            row += 1
             continue
-        for i, val in enumerate(df.iloc[idx].tolist()[2:]):
-            trip_id = val
+
+        trip_ids = df.iloc[row].tolist()[2:]
+        routes = df.iloc[row + 1].tolist()[2:]
+        times = df.iloc[row + 2].tolist()[2:]
+
+        for i in range(len(trip_ids)):
+            trip_id = trip_ids[i]
             if pd.isna(trip_id):
                 continue
-            route = df.iloc[idx + 1, i + 2]
-            time = df.iloc[idx + 2, i + 2]
             trip_str = str(trip_id)
+            route = routes[i] if i < len(routes) else ""
+            time = times[i] if i < len(times) else ""
             is_rq_rp_trip = bool(re.search(r"\((RQ|RP)\)", trip_str))
             try:
                 date = pd.to_datetime(dates[i]).date()
@@ -59,6 +67,9 @@ def extract_pairings(df):
                 "time": time,
                 "is_rq_rp": is_rq_rp_trip
             })
+
+        row += 4  # jump to next pilot block
+
     return pairings
 
 # --- Main App ---
