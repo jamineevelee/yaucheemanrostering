@@ -29,7 +29,10 @@ latest_sign_on = st.sidebar.time_input("Earliest Acceptable Sign-On", value=date
 def extract_pairings_from_pdf(uploaded_file):
     reader = PdfReader(uploaded_file)
     full_text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
-    
+
+    st.subheader("🧪 Raw PDF Text Preview (First 3000 chars)")
+    st.code(full_text[:3000])
+
     trip_blocks = re.findall(r"Trip ID:.*?(?=(Trip ID:|$))", full_text, re.DOTALL)
     pairings = []
 
