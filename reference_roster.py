@@ -27,57 +27,45 @@ latest_sign_on = st.sidebar.time_input("Earliest Acceptable Sign-On", value=date
 # --- Helper Functions ---
 def extract_pairings(df):
     pairings = []
-    date_row = None
-    for i, row in df.iterrows():
-        if 'Homebase' in row.values:
-            date_row = i + 1
-            break
-    if date_row is None:
-        return []
+    try:
+        # Row 3 = date row (based on 'Homebase' row)
+        dates = df.iloc[3].tolist()[2:]
+        row = 5  # actual pairing data starts from here
+        while row + 2 < len(df):
+            trip_ids = df.iloc[row].tolist()[2:]
+            routes = df.iloc[row + 1].tolist()[2:]
+            times = df.iloc[row + 2].tolist()[2:]
 
-    dates = df.iloc[date_row].tolist()[2:]
-
-    row = date_row + 1
-    while row < len(df):
-        name_cell = df.iloc[row, 0]
-        if pd.isna(name_cell):
-            row += 1
-            continue
-
-        trip_ids = df.iloc[row].tolist()[2:]
-        routes = df.iloc[row + 1].tolist()[2:]
-        times = df.iloc[row + 2].tolist()[2:]
-
-        for i in range(len(trip_ids)):
-            trip_id = trip_ids[i]
-            if pd.isna(trip_id):
-                continue
-            trip_str = str(trip_id)
-            route = routes[i] if i < len(routes) else ""
-            time = times[i] if i < len(times) else ""
-            is_rq_rp_trip = bool(re.search(r"\((RQ|RP)\)", trip_str))
-            try:
-                date = pd.to_datetime(dates[i]).date()
-            except:
-                continue
-            pairings.append({
-                "date": date,
-                "trip_id": trip_str,
-                "route": route,
-                "time": time,
-                "is_rq_rp": is_rq_rp_trip
-            })
-
-        row += 4  # jump to next pilot block
-
+            for i in range(len(trip_ids)):
+                trip_id = trip_ids[i]
+                if pd.isna(trip_id):
+                    continue
+                trip_str = str(trip_id)
+                route = routes[i] if i < len(routes) else ""
+                time = times[i] if i < len(times) else ""
+                is_rq_rp_trip = bool(re.search(r"\((RQ|RP)\)", trip_str))
+                try:
+                    date = pd.to_datetime(dates[i]).date()
+                except:
+                    continue
+                pairings.append({
+                    "date": date,
+                    "trip_id": trip_str,
+                    "route": route,
+                    "time": time,
+                    "is_rq_rp": is_rq_rp_trip
+                })
+            row += 4  # go to next pilot block
+    except Exception as e:
+        st.error(f"❌ Error extracting pairings: {e}")
     return pairings
 
 # --- Main App ---
 if file:
     df = pd.read_excel(file, sheet_name=0)
 
-    st.subheader("🧪 Raw Data Preview (Top 20 Rows)")
-    st.dataframe(df.head(20))
+    st.subheader("🧪 Raw Data Preview (Top 40 Rows)")
+    st.dataframe(df.head(40))
 
     pairing_list = extract_pairings(df)
 
