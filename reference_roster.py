@@ -64,7 +64,7 @@ def group_pairings(df):
                     if current_pairing:
                         current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
                         current_pairing["is_rq_rp"] = any(
-                            re.search(r"\((RQ|RP)\)", s["time"]) or "MEL" in s["route"]
+                            re.search(r"\((RQ|RP)\)", s["time"]) or "MEL" in s["route"] or re.search(r"\(RP\)", s["route"])
                             for s in current_pairing["segments"] if s["time"] or s["route"]
                         )
                         current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
@@ -77,7 +77,7 @@ def group_pairings(df):
         if current_pairing:
             current_pairing["end_date"] = current_pairing["segments"][-1]["date"]
             current_pairing["is_rq_rp"] = any(
-                re.search(r"\((RQ|RP)\)", s["time"]) or "MEL" in s["route"]
+                re.search(r"\((RQ|RP)\)", s["time"]) or "MEL" in s["route"] or re.search(r"\(RP\)", s["route"])
                 for s in current_pairing["segments"] if s["time"] or s["route"]
             )
             current_pairing["length_days"] = (current_pairing["end_date"] - current_pairing["start_date"]).days + 1
@@ -109,7 +109,7 @@ if file:
         "Days": p["length_days"],
         "RQ/RP": p.get("is_rq_rp", False),
         "Routes": " → ".join([s["route"] for s in p["segments"] if s["route"]])
-    } for p in all_pairings]
+    } for p in all_pairings if is_rq_rp or not p.get("is_rq_rp", False)]
     st.dataframe(pd.DataFrame(preview))
 
     st.info("✅ Pairing grouping ready — roster simulation coming next...")
